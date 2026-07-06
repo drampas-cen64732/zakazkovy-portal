@@ -41,7 +41,6 @@
         // --- KONFIGURACE & BRAND ---
         const Brand = { BrightBlue: '#2870ED', Teal: '#02A3A4', Forest: '#028661', Apple: '#0CB43F', Orange: '#FF6130', Pink: '#EB4C79', Aubergine: '#721C7A', Stone: '#245375', Anthracite: '#303030' };
 
-        // Změněno na velká písmena
         const AllMetrics = [
             'Úvěry', 'Revolvingy', 'Investice jednorázové', 'Investice pravidelné', 
             'Pojištění neživot', 'Pojištění život', 'Bydlení', 'Účty', 'Penze', 
@@ -63,7 +62,7 @@
         const Managers = ['Petr Novák (TL)', 'Jana Krátká (AL)', 'Karel Svoboda (TL)', 'Lucie Černá (TL)', 'Martin Říha (BCTL)'];
         const CurrentUser = { id: 'bc1', name: 'Nikol Šíma Prošková' };
 
-        // --- HELPERS (Datumy) ---
+        // --- HELPERS (Datumy a řazení) ---
         const formatDate = (isoString) => {
             if (!isoString) return '';
             const d = new Date(isoString);
@@ -81,9 +80,8 @@
         const getStatusWeight = (status) => {
             switch(status) {
                 case 'Poptávka': return 1;
-                case 'Připraveno': return 2;
-                case 'Rozpracované': return 3;
-                case 'Uzavřená': return 4;
+                case 'Probíhá': return 2;
+                case 'Uzavřená': return 3;
                 default: return 0;
             }
         };
@@ -97,13 +95,13 @@
                 horizon: '3 měsíce', baseline: 10, target: 25, current: 10, startDate: '2026-05-15', sessions: [] 
             },
             { 
-                id: 'A2', title: 'Start investic', year: 2026, status: 'Připraveno', manager: 'Jana Krátká (AL)', metric: 'Investice pravidelné', metricDesc: 'Penetrace pravidelných investic (%)',
+                id: 'A2', title: 'Start investic', year: 2026, status: 'Poptávka', manager: 'Jana Krátká (AL)', metric: 'Investice pravidelné', metricDesc: 'Penetrace pravidelných investic (%)',
                 currentState: 'Bankéři nenabízí investice k běžným účtům.', 
                 targetState: 'Zvýšení podílu klientů s pravidelnou investicí o 15 %.', 
                 horizon: '6 měsíců', baseline: 5, target: 15, current: 5, startDate: '2026-06-01', sessions: [] 
             },
             { 
-                id: 'A3', title: 'Adopce digitálu', year: 2026, status: 'Rozpracované', manager: 'Karel Svoboda (TL)', metric: 'On-line schůzky', metricDesc: 'Podíl on-line schůzek ze všech servisních (%)',
+                id: 'A3', title: 'Adopce digitálu', year: 2026, status: 'Probíhá', manager: 'Karel Svoboda (TL)', metric: 'On-line schůzky', metricDesc: 'Podíl on-line schůzek ze všech servisních (%)',
                 currentState: 'Nízká adopce digitálu při sjednávání na dálku. Lidé nevěří, že to funguje.', 
                 targetState: '70 % všech servisních schůzek proběhne on-line přes Teams.', 
                 horizon: '6 měsíců', baseline: 12, target: 40, current: 28, startDate: '2026-05-10',
@@ -113,7 +111,7 @@
                 ] 
             },
             { 
-                id: 'A4', title: 'Kampaň Život', year: 2026, status: 'Rozpracované', manager: 'Lucie Černá (TL)', metric: 'Pojištění život', metricDesc: 'Nová produkce ŽP (ks)',
+                id: 'A4', title: 'Kampaň Život', year: 2026, status: 'Probíhá', manager: 'Lucie Černá (TL)', metric: 'Pojištění život', metricDesc: 'Nová produkce ŽP (ks)',
                 currentState: 'Velký propad v ŽP oproti minulému kvartálu.', 
                 targetState: 'Návrat na standardní čísla pobočky.', 
                 horizon: '3 měsíce', baseline: 20, target: 50, current: 35, startDate: '2026-06-01',
@@ -245,7 +243,7 @@
                 setSortConfig({ key, direction });
             };
 
-            const activeCount = visibleAgreements.filter(a => a.status === 'Rozpracované').length;
+            const activeCount = visibleAgreements.filter(a => a.status === 'Probíhá').length;
             const interactionCount = visibleAgreements.reduce((acc, curr) => acc + curr.sessions.length, 0);
 
             const updateAgStatus = (id, newStatus) => {
@@ -285,7 +283,8 @@
             const createAgreement = (data) => {
                 const newAg = { 
                     id: `A${Date.now()}`, year: new Date().getFullYear(), status: 'Poptávka', 
-                    current: data.baseline, startDate: new Date().toISOString().split('T')[0], sessions: [], ...data 
+                    current: Number(data.baseline), startDate: new Date().toISOString().split('T')[0], sessions: [], ...data,
+                    baseline: Number(data.baseline), target: Number(data.target)
                 };
                 setAgreements([newAg, ...agreements]);
                 setWizardOpen(false);
@@ -335,7 +334,7 @@
                             </div>
                             <div className="bg-white rounded-xl p-6 shadow-sm flex items-center gap-4">
                                 <div className="w-12 h-12 rounded-[10px] flex items-center justify-center bg-[#e6f7f7] text-[#02A3A4]"><IconBarChart /></div>
-                                <div><p className="text-sm text-gray-500 font-semibold mb-1">Aktivní rozpracované</p><p className="text-3xl font-bold text-gray-900">{activeCount}</p></div>
+                                <div><p className="text-sm text-gray-500 font-semibold mb-1">Aktivní (Probíhá)</p><p className="text-3xl font-bold text-gray-900">{activeCount}</p></div>
                             </div>
                             <div className="bg-white rounded-xl p-6 shadow-sm flex items-center gap-4">
                                 <div className="w-12 h-12 rounded-[10px] flex items-center justify-center bg-[#faf5fa] text-[#721C7A]"><IconTrendingUp /></div>
@@ -347,8 +346,8 @@
                         {visibleAgreements.length === 0 ? (
                             <EmptyState message={`V roce ${yearFilter} zatím nemáte žádné zakázky v kategorii "${metricFilter}". Založte první!`} />
                         ) : viewMode === 'kanban' ? (
-                            <div className="flex gap-6 min-w-max h-full fade-in">
-                                {['Poptávka', 'Připraveno', 'Rozpracované', 'Uzavřená'].map(status => {
+                            <div className="flex gap-6 min-w-max h-full fade-in justify-start">
+                                {['Poptávka', 'Probíhá', 'Uzavřená'].map(status => {
                                     const cols = visibleAgreements.filter(a => a.status === status);
                                     return (
                                         <div key={status} className="w-[340px] flex flex-col gap-4">
@@ -422,7 +421,7 @@
             );
         };
 
-        // --- KARTA DOHODY (Kanban) ---
+        // --- KARTA ZAKÁZKY (Kanban) ---
         const Card = ({ ag, onClick }) => {
             const color = getMetricColor(ag.metric);
             const progress = ag.target > ag.baseline ? (ag.current - ag.baseline) / (ag.target - ag.baseline) : (ag.baseline - ag.current) / (ag.baseline - ag.target); 
@@ -440,7 +439,7 @@
                     <h4 className="font-bold text-gray-900 text-base mb-2 truncate">{ag.title}</h4>
                     
                     <p className="text-[11px] text-gray-500 mb-1 font-medium flex items-center gap-1">
-                        <span className="w-4 h-4 bg-gray-100 rounded-full inline-flex items-center justify-center text-[8px] font-bold">M</span> {ag.manager}
+                        <span className="w-4 h-4 bg-gray-100 rounded-full inline-flex items-center justify-center text-[8px] font-bold text-gray-600">M</span> {ag.manager}
                     </p>
                     <p className="text-[11px] text-gray-500 mb-3 font-medium flex items-center gap-1 pl-1">
                         🗓️ {formatDate(ag.startDate)} – {endDate}
@@ -449,7 +448,7 @@
                     <div className="bg-slate-50 p-3 rounded-lg text-xs flex justify-between items-center border border-gray-100">
                         <div className="text-center"><span className="block text-gray-400 mb-1">Start</span><strong className="text-gray-700 text-sm">{ag.baseline}</strong></div>
                         <div className="text-gray-300 font-bold">→</div>
-                        <div className="text-center"><span className="block text-gray-400 mb-1">Aktuálně</span><strong className="text-blue-600 text-sm">{ag.current}</strong></div>
+                        <div className="text-center"><span className="block text-gray-400 mb-1">Aktuálně</span><strong className="text-[#2870ED] text-sm">{ag.current}</strong></div>
                         <div className="text-gray-300 font-bold">→</div>
                         <div className="text-center"><span className="block text-gray-400 mb-1">Cíl</span><strong className="text-gray-700 text-sm">{ag.target}</strong></div>
                     </div>
@@ -487,7 +486,7 @@
                             <div className="p-6 bg-white border-b border-gray-200 sticky top-0 flex justify-between items-start z-10">
                                 <div>
                                     <div className="flex gap-2 mb-2">
-                                        <span className="text-xs font-bold text-white px-2 py-1 rounded-[5px]" style={{ backgroundColor: color }}>{ag.metric}</span>
+                                        <span className="text-xs font-bold text-white px-2 py-1 rounded-[5px] uppercase tracking-wide" style={{ backgroundColor: color }}>{ag.metric}</span>
                                         <span className="text-xs font-bold bg-gray-200 text-gray-700 px-2 py-1 rounded-[5px]">{ag.status}</span>
                                     </div>
                                     <h2 className="text-2xl font-bold text-gray-900">{ag.title}</h2>
@@ -501,11 +500,11 @@
                             <div className="p-6 flex-1 space-y-6">
                                 <div>
                                     <h3 className="text-sm font-bold text-gray-700 mb-2">Aktuální stav (Problém):</h3>
-                                    <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm text-sm text-gray-700 whitespace-pre-wrap">{ag.currentState}</div>
+                                    <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{ag.currentState}</div>
                                 </div>
                                 <div>
                                     <h3 className="text-sm font-bold text-gray-700 mb-2">Cílový stav:</h3>
-                                    <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm text-sm text-gray-700 whitespace-pre-wrap">{ag.targetState}</div>
+                                    <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{ag.targetState}</div>
                                 </div>
                                 <div>
                                     <h3 className="text-sm font-bold text-gray-700 mb-2 flex justify-between items-center">
@@ -531,10 +530,9 @@
                                         </div>
                                     ) : (
                                         <div className="flex flex-wrap gap-3">
-                                            {ag.status === 'Poptávka' && <button onClick={() => onStatusChange(ag.id, 'Připraveno')} className="flex-1 bg-[#2870ED] text-white px-4 py-3 rounded-[5px] font-bold">Připraveno (Ke schválení)</button>}
-                                            {ag.status === 'Připraveno' && <button onClick={() => onStatusChange(ag.id, 'Rozpracované')} className="flex-1 bg-[#0CB43F] text-white px-4 py-3 rounded-[5px] font-bold">Spustit realizaci</button>}
-                                            {ag.status === 'Rozpracované' && <button onClick={() => onStatusChange(ag.id, 'Uzavřená')} className="flex-1 bg-[#303030] text-white px-4 py-3 rounded-[5px] font-bold">Úspěšně splněno (Uzavřít)</button>}
-                                            {ag.status !== 'Poptávka' && <button onClick={() => onStatusChange(ag.id, 'Poptávka')} className="px-4 py-3 bg-gray-100 text-gray-600 font-bold rounded-[5px]">Vrátit zpět</button>}
+                                            {ag.status === 'Poptávka' && <button onClick={() => onStatusChange(ag.id, 'Probíhá')} className="flex-1 bg-[#0CB43F] hover:bg-[#0a9b36] text-white px-4 py-3 rounded-[5px] font-bold shadow-sm transition-colors">Spustit realizaci</button>}
+                                            {ag.status === 'Probíhá' && <button onClick={() => onStatusChange(ag.id, 'Uzavřená')} className="flex-1 bg-[#303030] hover:bg-black text-white px-4 py-3 rounded-[5px] font-bold shadow-sm transition-colors">Úspěšně splněno (Uzavřít)</button>}
+                                            {ag.status !== 'Poptávka' && <button onClick={() => onStatusChange(ag.id, 'Poptávka')} className="px-4 py-3 bg-gray-100 text-gray-600 font-bold rounded-[5px] hover:bg-gray-200 transition-colors">Vrátit zpět na Poptávku</button>}
                                         </div>
                                     )}
                                 </div>
@@ -542,12 +540,12 @@
                         </div>
 
                         {/* PRAVÝ PANEL: Výpis nebo Formulář */}
-                        <div className="w-full md:w-1/2 bg-white flex flex-col relative">
+                        <div className="w-full md:w-1/2 bg-white flex flex-col relative border-l border-gray-200">
                             {view === 'list' ? (
                                 <div className="flex flex-col h-full fade-in">
                                     <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-white z-10">
                                         <h3 className="font-bold text-gray-800">Historie Interakcí</h3>
-                                        {ag.status === 'Rozpracované' && (
+                                        {ag.status === 'Probíhá' && (
                                             <button onClick={openAdd} className="bg-[#0CB43F] hover:bg-[#0a9b36] text-white px-4 py-2 rounded-[5px] font-bold text-sm shadow-sm transition-colors">+ Zadat novou</button>
                                         )}
                                     </div>
@@ -587,7 +585,7 @@
 
         // --- FORMULÁŘ PRO INTERAKCI ---
         const SessionForm = ({ initialData, ag, onSubmit, onCancel }) => {
-            const [val, setVal] = useState(initialData?.value || ag.current);
+            const [val, setVal] = useState(initialData?.value !== undefined ? String(initialData.value) : String(ag.current));
             const [activities, setActivities] = useState(initialData?.activities || '');
             const [note, setNote] = useState(initialData?.note || '');
             const [followUp, setFollowUp] = useState(initialData?.followUp || '');
@@ -600,7 +598,7 @@
                 <div className="flex flex-col h-full fade-in absolute inset-0 bg-white z-20">
                     <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-slate-50">
                         <h3 className="font-bold text-gray-800">{isEdit ? 'Upravit interakci' : 'Zadat novou interakci'}</h3>
-                        <button onClick={onCancel} className="text-sm font-bold text-gray-500 hover:text-gray-800">Zpět na přehled</button>
+                        <button onClick={onCancel} className="text-sm font-bold text-gray-500 hover:text-gray-800 transition-colors">Zpět na přehled</button>
                     </div>
                     <div className="flex-1 overflow-y-auto p-6 space-y-5">
                         
@@ -618,7 +616,7 @@
                             </div>
                             <div className="flex-1">
                                 <label className="text-sm font-bold text-gray-700 block mb-1">Hodnota metriky</label>
-                                <input type="number" value={val} onChange={e => setVal(Number(e.target.value))} className="w-full border border-gray-300 rounded-[5px] p-2 outline-none focus:border-[#2870ED] font-bold text-[#2870ED]" />
+                                <input type="number" value={val} onChange={e => setVal(e.target.value)} className="w-full border border-gray-300 rounded-[5px] p-2 outline-none focus:border-[#2870ED] font-bold text-[#2870ED]" />
                             </div>
                         </div>
                         
@@ -639,8 +637,8 @@
                     </div>
                     <div className="p-6 border-t border-gray-100 bg-white">
                         <button 
-                            onClick={() => onSubmit({ date, value: val, activities, note, followUp })}
-                            disabled={!activities || !note || !followUp} 
+                            onClick={() => onSubmit({ date, value: Number(val), activities, note, followUp })}
+                            disabled={!activities || !note || !followUp || val === ''} 
                             className="w-full bg-[#0CB43F] hover:bg-[#0a9b36] disabled:opacity-50 text-white font-bold py-3 rounded-[5px] shadow-sm transition-colors"
                         >
                             {isEdit ? 'Uložit změny' : 'Uložit interakci'}
@@ -673,12 +671,12 @@
                         <textarea 
                             placeholder="Slovní hodnocení (co se povedlo, co zlepšit)..."
                             value={comment} onChange={e => setComment(e.target.value)}
-                            className="w-full border border-gray-300 rounded-[5px] p-3 min-h-[100px] mb-6 outline-none focus:border-[#02A3A4] text-sm"
+                            className="w-full border border-gray-300 rounded-[5px] p-3 min-h-[100px] mb-6 outline-none focus:border-[#02A3A4] text-sm resize-none"
                         />
 
                         <div className="flex gap-4">
-                            <button onClick={onCancel} className="flex-1 py-3 text-gray-600 font-bold hover:bg-gray-100 rounded-[5px]">Zrušit</button>
-                            <button onClick={() => onSubmit({ stars, comment })} disabled={stars === 0} className="flex-1 py-3 bg-[#303030] text-white font-bold rounded-[5px] hover:bg-black disabled:opacity-50">Potvrdit a uzavřít</button>
+                            <button onClick={onCancel} className="flex-1 py-3 text-gray-600 font-bold hover:bg-gray-100 rounded-[5px] transition-colors">Zrušit</button>
+                            <button onClick={() => onSubmit({ stars, comment })} disabled={stars === 0} className="flex-1 py-3 bg-[#303030] text-white font-bold rounded-[5px] hover:bg-black disabled:opacity-50 transition-colors">Potvrdit a uzavřít</button>
                         </div>
                     </div>
                 </div>
@@ -688,7 +686,7 @@
         // --- WIZARD PRO NOVOU DOHODU ---
         const Wizard = ({ onClose, onSave }) => {
             const [step, setStep] = useState(1);
-            const [data, setData] = useState({ title: '', metric: 'Úvěry', metricDesc: '', manager: '', currentState: '', targetState: '', horizon: '6 měsíců', baseline: 0, target: 0 });
+            const [data, setData] = useState({ title: '', metric: 'Úvěry', metricDesc: '', manager: '', currentState: '', targetState: '', horizon: '6 měsíců', baseline: '', target: '' });
             const [aiLoading, setAiLoading] = useState(null);
 
             useEffect(() => {
@@ -701,11 +699,22 @@
                 if(!data[field]) return;
                 setAiLoading(field);
                 setTimeout(() => {
-                    const lines = data[field].split(/[.\n]/).filter(s => s.trim().length > 2);
-                    const formatted = lines.map(s => `• ${s.trim()}`).join('\n');
-                    setData(prev => ({...prev, [field]: formatted}));
+                    let text = data[field];
+                    const fillers = ['prostě', 'nějak', 'jakoby', 'trochu', 'možná', 'asi', 'vlastně', 'myslím', 'že', 'bychom', 'měli'];
+                    fillers.forEach(w => { text = text.replace(new RegExp(`\\b${w}\\b`, 'gi'), ''); });
+                    text = text.replace(/\s+/g, ' ');
+                    
+                    const lines = text.split(/[.,\n]/).filter(s => s.trim().length > 3);
+                    const formatted = lines.map(s => {
+                        let t = s.trim();
+                        return `• ${t.charAt(0).toUpperCase() + t.slice(1)}`;
+                    }).join('\n');
+                    
+                    const finalResult = formatted.length > 5 ? formatted : (field === 'currentState' ? "• Stagnace výkonu\n• Chybějící argumentace" : "• Zvýšení aktivity o 30 %\n• Větší samostatnost");
+                    
+                    setData(prev => ({...prev, [field]: finalResult}));
                     setAiLoading(null);
-                }, 1200);
+                }, 1500);
             };
 
             return (
@@ -743,16 +752,16 @@
                                 <div className="space-y-6 fade-in">
                                     <div className="relative bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
                                         <label className="block font-bold text-sm text-gray-700 mb-2">Popis aktuálního stavu (Co teď nefunguje)</label>
-                                        <textarea value={data.currentState} onChange={e => setData({...data, currentState: e.target.value})} className="w-full bg-slate-50 border border-gray-200 p-3 rounded-[5px] h-32 outline-none resize-none focus:border-[#2870ED] text-sm" placeholder="Vypište se z toho, co nyní nefunguje..."></textarea>
+                                        <textarea value={data.currentState} onChange={e => setData({...data, currentState: e.target.value})} className="w-full bg-slate-50 border border-gray-200 p-3 rounded-[5px] h-32 outline-none resize-none focus:border-[#2870ED] text-sm leading-relaxed" placeholder="Vypište se z toho, co nyní nefunguje..."></textarea>
                                         <button onClick={() => simulateAI('currentState')} className={`mt-2 text-xs font-bold text-white px-4 py-2 rounded-[5px] transition-all w-full flex justify-center ${aiLoading==='currentState' ? 'ai-shimmer' : 'bg-[#721C7A] hover:bg-[#5a1660]'}`}>
-                                            {aiLoading === 'currentState' ? 'Strukturuji...' : '✨ AI Strukturovat'}
+                                            {aiLoading === 'currentState' ? 'Pracuji na textu...' : '✨ AI Strukturovat'}
                                         </button>
                                     </div>
                                     <div className="relative bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
                                         <label className="block font-bold text-sm text-gray-700 mb-2">Popis cílového stavu (Co od toho chceme)</label>
-                                        <textarea value={data.targetState} onChange={e => setData({...data, targetState: e.target.value})} className="w-full bg-slate-50 border border-gray-200 p-3 rounded-[5px] h-32 outline-none resize-none focus:border-[#2870ED] text-sm" placeholder="Definujte, jak to má vypadat na konci..."></textarea>
+                                        <textarea value={data.targetState} onChange={e => setData({...data, targetState: e.target.value})} className="w-full bg-slate-50 border border-gray-200 p-3 rounded-[5px] h-32 outline-none resize-none focus:border-[#2870ED] text-sm leading-relaxed" placeholder="Definujte, jak to má vypadat na konci..."></textarea>
                                         <button onClick={() => simulateAI('targetState')} className={`mt-2 text-xs font-bold text-white px-4 py-2 rounded-[5px] transition-all w-full flex justify-center ${aiLoading==='targetState' ? 'ai-shimmer' : 'bg-[#721C7A] hover:bg-[#5a1660]'}`}>
-                                            {aiLoading === 'targetState' ? 'Strukturuji...' : '✨ AI Strukturovat'}
+                                            {aiLoading === 'targetState' ? 'Pracuji na textu...' : '✨ AI Strukturovat'}
                                         </button>
                                     </div>
                                 </div>
@@ -761,17 +770,17 @@
                             {step === 3 && (
                                 <div className="space-y-6 fade-in">
                                     <div>
-                                        <label className="block font-bold text-sm text-gray-700 mb-2">Přesný ukazatel (Co konkrétně měříme?)</label>
+                                        <label className="block font-bold text-sm text-gray-700 mb-2">Co konkrétně měříme?</label>
                                         <input type="text" value={data.metricDesc} onChange={e => setData({...data, metricDesc: e.target.value})} className="w-full border border-gray-300 p-3 rounded-[5px] outline-none focus:border-[#2870ED]" placeholder="Např. Počet nově načerpaných úvěrů, nebo Penetrace %" />
                                     </div>
                                     <div className="flex gap-6 p-4 bg-slate-50 border border-gray-200 rounded-xl">
                                         <div className="flex-1">
                                             <label className="block font-bold text-sm text-gray-700 mb-2">Start (Baseline)</label>
-                                            <input type="number" value={data.baseline} onChange={e => setData({...data, baseline: Number(e.target.value)})} className="w-full border border-gray-300 p-3 rounded-[5px] outline-none focus:border-[#2870ED]" />
+                                            <input type="number" value={data.baseline} onChange={e => setData({...data, baseline: e.target.value})} className="w-full border border-gray-300 p-3 rounded-[5px] outline-none focus:border-[#2870ED]" />
                                         </div>
                                         <div className="flex-1">
                                             <label className="block font-bold text-sm text-gray-700 mb-2">Cíl (Target)</label>
-                                            <input type="number" value={data.target} onChange={e => setData({...data, target: Number(e.target.value)})} className="w-full border border-gray-300 p-3 rounded-[5px] outline-none focus:border-[#2870ED] font-bold text-green-700" />
+                                            <input type="number" value={data.target} onChange={e => setData({...data, target: e.target.value})} className="w-full border border-gray-300 p-3 rounded-[5px] outline-none focus:border-[#2870ED] font-bold text-green-700" />
                                         </div>
                                     </div>
                                     <div>
