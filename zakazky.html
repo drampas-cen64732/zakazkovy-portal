@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zakázkový portál - BC View</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Chart.js a Date Adapter pro reálnou časovou osu -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    
+    <!-- React & Babel -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <style>
+        body { font-family: 'Inter', system-ui, sans-serif; background-color: #f8fafc; color: #303030; }
+        .glass { background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(12px); border-bottom: 1px solid #e5e7eb; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        
+        @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+        .ai-shimmer {
+            background: linear-gradient(90deg, #721C7A 25%, #9d2b99 50%, #721C7A 75%);
+            background-size: 200% 100%;
+            animation: shimmer 2s infinite;
+        }
+        .fade-in { animation: fadeIn 0.2s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useMemo, useEffect, useRef } = React;
+
+        // --- KONFIGURACE & BRAND ---
+        const Brand = { BrightBlue: '#2870ED', Teal: '#02A3A4', Forest: '#028661', Apple: '#0CB43F', Orange: '#FF6130', Pink: '#EB4C79', Aubergine: '#721C7A', Stone: '#245375', Anthracite: '#303030' };
+
+        // Změněno na velká písmena
+        const AllMetrics = [
+            'Úvěry', 'Revolvingy', 'Investice jednorázové', 'Investice pravidelné', 
+            'Pojištění neživot', 'Pojištění život', 'Bydlení', 'Účty', 'Penze', 
+            'Stavební spoření', 'Index', 'Nový investor', 'Schůzky', 'Softy', 
+            'Aktivní DIGI prodej', 'On-line schůzky', 'Bez čísel'
+        ];
+
+        const getMetricColor = (metric) => {
+            const m = metric.toLowerCase();
+            if (['úvěry', 'revolvingy', 'bydlení'].includes(m)) return Brand.Orange;
+            if (m.includes('investice') || m === 'nový investor') return Brand.Stone;
+            if (m.includes('pojištění')) return Brand.Apple;
+            if (['účty', 'penze', 'stavební spoření', 'index'].includes(m)) return Brand.Aubergine;
+            if (m.includes('digi') || m.includes('on-line')) return Brand.BrightBlue;
+            return Brand.Teal; 
+        };
+
+        const Years = [2025, 2026, 2027];
+        const Managers = ['Petr Novák (TL)', 'Jana Krátká (AL)', 'Karel Svoboda (TL)', 'Lucie Černá (TL)', 'Martin Říha (BCTL)'];
+        const CurrentUser = { id: 'bc1', name: 'Nikol Šíma Prošková' };
+
+        // --- HELPERS (Datumy) ---
+        const formatDate = (isoString) => {
+            if (!isoString) return '';
+            const d = new Date(isoString);
+            return `${d.getDate()}. ${d.getMonth() + 1}. ${d.getFullYear()}`;
+        };
+
+        const calculateEndDate = (startDate, horizon) => {
+            if (!startDate) return '';
+            const d = new Date(startDate);
+            const months = parseInt(horizon) || 0; 
+            d.setMonth(d.getMonth() + months);
+            return formatDate(d.toISOString());
+        };
+
+        const getStatusWeight = (status) => {
+            switch(status) {
+                case 'Poptávka': return 1;
+                case 'Připraveno': return 2;
+                case 'Rozpracované': return 3;
+                case 'Uzavřená': return 4;
+                default: return 0;
+            }
+        };
+
+        // --- MOCK DATA ---
+        const initialData = [
+            { 
+                id: 'A1', title: 'Záchrana hypoték', year: 2026, status: 'Poptávka', manager: 'Petr Novák (TL)', metric: 'Bydlení', metricDesc: 'Počet refinancovaných hypoték týdně',
+                currentState: 'Tým stagnuje v nabídce konsolidací, chybí argumentace. Bojí se klientům volat.', 
+                targetState: 'Každý bankéř udělá týdně 5 relevantních nabídek na refinancování.', 
+                horizon: '3 měsíce', baseline: 10, target: 25, current: 10, startDate: '2026-05-15', sessions: [] 
+            },
+            { 
+                id: 'A2', title: 'Start investic', year: 2026, status: 'Připraveno', manager: 'Jana Krátká (AL)', metric: 'Investice pravidelné', metricDesc: 'Penetrace pravidelných investic (%)',
+                currentState: 'Bankéři nenabízí investice k běžným účtům.', 
+                targetState: 'Zvýšení podílu klientů s pravidelnou investicí o 15 %.', 
+                horizon: '6 měsíců', baseline: 5, target: 15, current: 5, startDate: '2026-06-01', sessions: [] 
+            },
+            { 
+                id: 'A3', title: 'Adopce digitálu', year: 2026, status: 'Rozpracované', manager: 'Karel Svoboda (TL)', metric: 'On-line schůzky', metricDesc: 'Podíl on-line schůzek ze všech servisních (%)',
+                currentState: 'Nízká adopce digitálu při sjednávání na dálku. Lidé nevěří, že to funguje.', 
+                targetState: '70 % všech servisních schůzek proběhne on-line přes Teams.', 
+                horizon: '6 měsíců', baseline: 12, target: 40, current: 28, startDate: '2026-05-10',
+                sessions: [
+                    { date: '2026-06-01', value: 15, activities: 'Kick-off s celým týmem.', note: 'Mírná skepse, 2 ambasadoři.', followUp: 'Příště stínovat schůzky ambasadorů.' },
+                    { date: '2026-06-25', value: 28, activities: 'Stínování 4 schůzek.', note: 'Ambasadoři skvělí, konverze roste.', followUp: 'Nasdílet úspěchy.' }
+                ] 
+            },
+            { 
+                id: 'A4', title: 'Kampaň Život', year: 2026, status: 'Rozpracované', manager: 'Lucie Černá (TL)', metric: 'Pojištění život', metricDesc: 'Nová produkce ŽP (ks)',
+                currentState: 'Velký propad v ŽP oproti minulému kvartálu.', 
+                targetState: 'Návrat na standardní čísla pobočky.', 
+                horizon: '3 měsíce', baseline: 20, target: 50, current: 35, startDate: '2026-06-01',
+                sessions: [
+                    { date: '2026-06-20', value: 35, activities: 'Roleplay na ranní poradě.', note: 'Zlepšení v překonávání námitek.', followUp: 'Zkontrolovat čísla za týden.' }
+                ] 
+            },
+            { 
+                id: 'A5', title: 'Zlatí klienti', year: 2026, status: 'Uzavřená', manager: 'Petr Novák (TL)', metric: 'Index', metricDesc: 'Index zdraví u TOP segmentu',
+                currentState: 'Zanedbaná péče o top klientelu.', 
+                targetState: 'Index zdraví u top segmentu nad 80.', 
+                horizon: '12 měsíců', baseline: 60, target: 80, current: 82, startDate: '2025-08-01',
+                sessions: [
+                    { date: '2025-10-10', value: 70, activities: 'Workshop.', note: 'Skvělý posun.', followUp: 'Udržet.' },
+                    { date: '2026-02-15', value: 82, activities: 'Finální evaluace.', note: 'Cíl splněn.', followUp: '-' }
+                ],
+                rating: { stars: 5, comment: 'Výborná spolupráce, tým díky BC zrychlil procesy a chytil novou motivaci.' }
+            }
+        ];
+
+        // --- SVGs ---
+        const IconBriefcase = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="14" x="2" y="7" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>;
+        const IconBarChart = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>;
+        const IconTrendingUp = () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>;
+        const IconKanban = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><path d="M9 3v18"/><path d="M15 3v18"/></svg>;
+        const IconList = () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>;
+        const IconStar = ({ filled }) => <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill={filled ? '#FFB196' : 'none'} stroke={filled ? '#FF6130' : '#cbd5e1'} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>;
+        const IconInbox = () => <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="1" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>;
+        const IconSortAsc = () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="ml-1 inline"><path d="m18 15-6-6-6 6"/></svg>;
+        const IconSortDesc = () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="ml-1 inline"><path d="m6 9 6 6 6-6"/></svg>;
+
+        // --- CHART COMPONENT ---
+        const ProgressChart = ({ data, target, color, startDate }) => {
+            const canvasRef = useRef(null);
+            const chartRef = useRef(null);
+
+            useEffect(() => {
+                if (!canvasRef.current) return;
+                if (chartRef.current) chartRef.current.destroy();
+
+                const ctx = canvasRef.current.getContext('2d');
+                
+                const chartData = [
+                    { x: startDate, y: data[0]?.baseline || (data.length === 0 ? 0 : null) }, 
+                    ...data.map(d => ({ x: d.date, y: d.value }))
+                ];
+                
+                if (data.length === 0 || chartData[0].y === null) {
+                    chartData[0].y = 0; 
+                }
+                const lastDate = chartData[chartData.length - 1].x;
+
+                chartRef.current = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        datasets: [
+                            { label: 'Vývoj', data: chartData, borderColor: color, backgroundColor: color, tension: 0.2, borderWidth: 3, pointRadius: 5 },
+                            { label: 'Cíl', data: [{ x: startDate, y: target }, { x: lastDate, y: target }], borderColor: Brand.Anthracite, borderDash: [5, 5], borderWidth: 2, fill: false, pointRadius: 0 }
+                        ]
+                    },
+                    options: { 
+                        responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, 
+                        scales: { 
+                            y: { border: { display: false } }, 
+                            x: { type: 'time', time: { unit: 'day', displayFormats: { day: 'dd. MM. yyyy' }, tooltipFormat: 'dd. MM. yyyy' }, grid: { display: false } } 
+                        } 
+                    }
+                });
+
+                return () => { if (chartRef.current) chartRef.current.destroy(); }
+            }, [data, target, color, startDate]);
+
+            return <canvas ref={canvasRef} />;
+        };
+
+        // --- EMPTY STATE COMPONENT ---
+        const EmptyState = ({ message }) => (
+            <div className="flex flex-col items-center justify-center py-20 text-center w-full fade-in">
+                <IconInbox />
+                <h3 className="text-lg font-bold text-gray-700 mt-4">Zatím tu nic není</h3>
+                <p className="text-gray-500 max-w-sm mt-2">{message}</p>
+            </div>
+        );
+
+        // --- MAIN APP ---
+        const App = () => {
+            const [yearFilter, setYearFilter] = useState(2026);
+            const [metricFilter, setMetricFilter] = useState('Všechny metriky');
+            const [viewMode, setViewMode] = useState('kanban'); 
+            const [sortConfig, setSortConfig] = useState({ key: 'startDate', direction: 'desc' });
+            
+            const [agreements, setAgreements] = useState(initialData);
+            const [activeAg, setActiveAg] = useState(null);
+            const [isWizardOpen, setWizardOpen] = useState(false);
+            const [ratingModalAg, setRatingModalAg] = useState(null); 
+
+            // Base filter
+            const visibleAgreements = useMemo(() => {
+                let filtered = agreements.filter(a => a.year === yearFilter);
+                if (metricFilter !== 'Všechny metriky') filtered = filtered.filter(a => a.metric === metricFilter);
+                return filtered;
+            }, [agreements, yearFilter, metricFilter]);
+
+            // Sorted lists for table
+            const sortedAgreements = useMemo(() => {
+                let sortable = [...visibleAgreements];
+                sortable.sort((a, b) => {
+                    let aVal = a[sortConfig.key];
+                    let bVal = b[sortConfig.key];
+
+                    if (sortConfig.key === 'progress') {
+                        aVal = a.target > a.baseline ? (a.current - a.baseline) / (a.target - a.baseline) : (a.baseline - a.current) / (a.baseline - a.target);
+                        bVal = b.target > b.baseline ? (b.current - b.baseline) / (b.target - b.baseline) : (b.baseline - b.current) / (b.baseline - b.target);
+                    } else if (sortConfig.key === 'status') {
+                        aVal = getStatusWeight(a.status);
+                        bVal = getStatusWeight(b.status);
+                    }
+
+                    if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+                    if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+                    return 0;
+                });
+                return sortable;
+            }, [visibleAgreements, sortConfig]);
+
+            const requestSort = (key) => {
+                let direction = 'asc';
+                if (sortConfig.key === key && sortConfig.direction === 'asc') direction = 'desc';
+                setSortConfig({ key, direction });
+            };
+
+            const activeCount = visibleAgreements.filter(a => a.status === 'Rozpracované').length;
+            const interactionCount = visibleAgreements.reduce((acc, curr) => acc + curr.sessions.length, 0);
+
+            const updateAgStatus = (id, newStatus) => {
+                if (newStatus === 'Uzavřená') {
+                    setRatingModalAg(agreements.find(a => a.id === id));
+                    setActiveAg(null);
+                } else {
+                    setAgreements(prev => prev.map(a => a.id === id ? { ...a, status: newStatus } : a));
+                    setActiveAg(prev => prev ? { ...prev, status: newStatus } : null);
+                }
+            };
+
+            const submitRating = (ratingData) => {
+                setAgreements(prev => prev.map(a => a.id === ratingModalAg.id ? { ...a, status: 'Uzavřená', rating: ratingData } : a));
+                setRatingModalAg(null);
+            };
+
+            const saveSession = (id, session, isEdit, editIndex) => {
+                setAgreements(prev => prev.map(a => {
+                    if (a.id !== id) return a;
+                    const newSessions = [...a.sessions];
+                    if (isEdit) newSessions[editIndex] = session;
+                    else newSessions.push(session);
+                    const newCurrent = newSessions.length > 0 ? newSessions[newSessions.length - 1].value : a.baseline;
+                    return { ...a, current: newCurrent, sessions: newSessions };
+                }));
+                
+                setActiveAg(prev => {
+                    const newSessions = [...prev.sessions];
+                    if (isEdit) newSessions[editIndex] = session;
+                    else newSessions.push(session);
+                    const newCurrent = newSessions.length > 0 ? newSessions[newSessions.length - 1].value : prev.baseline;
+                    return { ...prev, current: newCurrent, sessions: newSessions };
+                });
+            };
+
+            const createAgreement = (data) => {
+                const newAg = { 
+                    id: `A${Date.now()}`, year: new Date().getFullYear(), status: 'Poptávka', 
+                    current: data.baseline, startDate: new Date().toISOString().split('T')[0], sessions: [], ...data 
+                };
+                setAgreements([newAg, ...agreements]);
+                setWizardOpen(false);
+            };
+
+            return (
+                <div className="flex flex-col min-h-screen">
+                    <header className="sticky top-0 z-40 glass px-6 h-16 flex items-center justify-between shadow-sm">
+                        <div className="flex items-center gap-4">
+                            <div className="w-8 h-8 rounded-[5px] bg-[#2870ED] text-white flex items-center justify-center font-bold">S</div>
+                            <h1 className="text-xl font-bold tracking-tight">Zakázky | <span className="font-normal text-gray-500">Business Coach</span></h1>
+                        </div>
+                        
+                        <div className="flex items-center gap-4">
+                            <select value={yearFilter} onChange={e => setYearFilter(Number(e.target.value))} className="bg-transparent border-none px-2 py-2 text-sm font-bold text-gray-700 outline-none cursor-pointer">
+                                {Years.map(y => <option key={y} value={y}>Rok {y}</option>)}
+                            </select>
+                            <select value={metricFilter} onChange={e => setMetricFilter(e.target.value)} className="bg-transparent border-none px-2 py-2 text-sm font-medium text-gray-700 outline-none cursor-pointer">
+                                <option>Všechny metriky</option>
+                                {AllMetrics.map(m => <option key={m} value={m}>{m}</option>)}
+                            </select>
+                            
+                            <div className="h-6 w-px bg-gray-300 mx-1"></div>
+                            
+                            {/* Toggle Zobrazení */}
+                            <div className="flex bg-gray-100 p-1 rounded-lg">
+                                <button onClick={() => setViewMode('kanban')} className={`p-1.5 rounded-md transition-colors ${viewMode === 'kanban' ? 'bg-white shadow text-[#2870ED]' : 'text-gray-400 hover:text-gray-700'}`} title="Nástěnka"><IconKanban /></button>
+                                <button onClick={() => setViewMode('list')} className={`p-1.5 rounded-md transition-colors ${viewMode === 'list' ? 'bg-white shadow text-[#2870ED]' : 'text-gray-400 hover:text-gray-700'}`} title="Seznam"><IconList /></button>
+                            </div>
+
+                            <div className="h-6 w-px bg-gray-300 mx-1"></div>
+
+                            <div className="flex items-center gap-2 text-sm font-semibold text-gray-700 mr-2">
+                                <div className="w-6 h-6 rounded-full bg-teal-100 text-teal-700 flex items-center justify-center text-xs">NŠ</div>
+                                {CurrentUser.name}
+                            </div>
+                            <button onClick={() => setWizardOpen(true)} className="bg-[#2870ED] hover:bg-[#1C5BCA] text-white px-5 py-2 rounded-[5px] font-bold text-sm shadow transition-colors">+ Nová zakázka</button>
+                        </div>
+                    </header>
+
+                    <main className="flex-1 p-6 overflow-x-auto bg-slate-50">
+                        {/* KPI BANNERS */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 max-w-6xl">
+                            <div className="bg-white rounded-xl p-6 shadow-sm flex items-center gap-4">
+                                <div className="w-12 h-12 rounded-[10px] flex items-center justify-center bg-[#f0f5ff] text-[#2870ED]"><IconBriefcase /></div>
+                                <div><p className="text-sm text-gray-500 font-semibold mb-1">Počet zakázek</p><p className="text-3xl font-bold text-gray-900">{visibleAgreements.length}</p></div>
+                            </div>
+                            <div className="bg-white rounded-xl p-6 shadow-sm flex items-center gap-4">
+                                <div className="w-12 h-12 rounded-[10px] flex items-center justify-center bg-[#e6f7f7] text-[#02A3A4]"><IconBarChart /></div>
+                                <div><p className="text-sm text-gray-500 font-semibold mb-1">Aktivní rozpracované</p><p className="text-3xl font-bold text-gray-900">{activeCount}</p></div>
+                            </div>
+                            <div className="bg-white rounded-xl p-6 shadow-sm flex items-center gap-4">
+                                <div className="w-12 h-12 rounded-[10px] flex items-center justify-center bg-[#faf5fa] text-[#721C7A]"><IconTrendingUp /></div>
+                                <div><p className="text-sm text-gray-500 font-semibold mb-1">Interakce</p><p className="text-3xl font-bold text-gray-900">{interactionCount}</p></div>
+                            </div>
+                        </div>
+
+                        {/* CONTENT VIEW */}
+                        {visibleAgreements.length === 0 ? (
+                            <EmptyState message={`V roce ${yearFilter} zatím nemáte žádné zakázky v kategorii "${metricFilter}". Založte první!`} />
+                        ) : viewMode === 'kanban' ? (
+                            <div className="flex gap-6 min-w-max h-full fade-in">
+                                {['Poptávka', 'Připraveno', 'Rozpracované', 'Uzavřená'].map(status => {
+                                    const cols = visibleAgreements.filter(a => a.status === status);
+                                    return (
+                                        <div key={status} className="w-[340px] flex flex-col gap-4">
+                                            <div className="flex items-center justify-between pb-2 border-b-2 border-gray-200">
+                                                <h2 className="font-bold text-gray-700">{status}</h2>
+                                                <span className="bg-gray-200 text-gray-700 text-xs font-bold px-2 py-1 rounded-[5px]">{cols.length}</span>
+                                            </div>
+                                            {cols.length === 0 ? (
+                                                <div className="border-2 border-dashed border-gray-200 rounded-lg h-24 flex items-center justify-center text-sm text-gray-400">Prázdný sloupec</div>
+                                            ) : (
+                                                cols.map(ag => <Card key={ag.id} ag={ag} onClick={() => setActiveAg(ag)} />)
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        ) : (
+                            <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden fade-in max-w-6xl">
+                                <table className="w-full text-left border-collapse">
+                                    <thead>
+                                        <tr className="bg-slate-50 text-gray-600 text-sm border-b border-gray-200">
+                                            <th className="p-4 font-semibold cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => requestSort('title')}>
+                                                Název zakázky {sortConfig.key === 'title' ? (sortConfig.direction === 'asc' ? <IconSortAsc /> : <IconSortDesc />) : null}
+                                            </th>
+                                            <th className="p-4 font-semibold cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => requestSort('manager')}>
+                                                Manažer {sortConfig.key === 'manager' ? (sortConfig.direction === 'asc' ? <IconSortAsc /> : <IconSortDesc />) : null}
+                                            </th>
+                                            <th className="p-4 font-semibold cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => requestSort('metric')}>
+                                                Téma {sortConfig.key === 'metric' ? (sortConfig.direction === 'asc' ? <IconSortAsc /> : <IconSortDesc />) : null}
+                                            </th>
+                                            <th className="p-4 font-semibold cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => requestSort('status')}>
+                                                Stav {sortConfig.key === 'status' ? (sortConfig.direction === 'asc' ? <IconSortAsc /> : <IconSortDesc />) : null}
+                                            </th>
+                                            <th className="p-4 font-semibold cursor-pointer hover:bg-gray-100 transition-colors" onClick={() => requestSort('progress')}>
+                                                Progres {sortConfig.key === 'progress' ? (sortConfig.direction === 'asc' ? <IconSortAsc /> : <IconSortDesc />) : null}
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {sortedAgreements.map(ag => {
+                                            const color = getMetricColor(ag.metric);
+                                            const progress = ag.target > ag.baseline ? (ag.current - ag.baseline) / (ag.target - ag.baseline) : (ag.baseline - ag.current) / (ag.baseline - ag.target); 
+                                            const isOnTrack = progress > 0;
+                                            return (
+                                                <tr key={ag.id} onClick={() => setActiveAg(ag)} className="border-b border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors">
+                                                    <td className="p-4 font-bold text-gray-900">{ag.title}</td>
+                                                    <td className="p-4 text-sm text-gray-600">{ag.manager}</td>
+                                                    <td className="p-4"><span className="text-[10px] font-bold text-white px-2 py-1 rounded-[5px] uppercase tracking-wide" style={{ backgroundColor: color }}>{ag.metric}</span></td>
+                                                    <td className="p-4"><span className="text-xs font-bold bg-gray-100 text-gray-700 px-2 py-1 rounded-[5px]">{ag.status}</span></td>
+                                                    <td className="p-4">
+                                                        {ag.status !== 'Poptávka' ? (
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-sm font-bold text-gray-700">{ag.current} / {ag.target}</span>
+                                                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-[5px] ${isOnTrack ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{isOnTrack ? 'ON TRACK' : 'OFF TRACK'}</span>
+                                                            </div>
+                                                        ) : <span className="text-sm text-gray-400">-</span>}
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </main>
+
+                    {isWizardOpen && <Wizard onClose={() => setWizardOpen(false)} onSave={createAgreement} />}
+                    {activeAg && <DetailModal ag={activeAg} onClose={() => setActiveAg(null)} onStatusChange={updateAgStatus} onSaveSession={saveSession} />}
+                    {ratingModalAg && <RatingModal ag={ratingModalAg} onSubmit={submitRating} onCancel={() => setRatingModalAg(null)} />}
+                </div>
+            );
+        };
+
+        // --- KARTA DOHODY (Kanban) ---
+        const Card = ({ ag, onClick }) => {
+            const color = getMetricColor(ag.metric);
+            const progress = ag.target > ag.baseline ? (ag.current - ag.baseline) / (ag.target - ag.baseline) : (ag.baseline - ag.current) / (ag.baseline - ag.target); 
+            const isOnTrack = progress > 0;
+            const endDate = calculateEndDate(ag.startDate, ag.horizon);
+            
+            return (
+                <div onClick={onClick} className="bg-white p-5 rounded-lg border-l-4 shadow-sm hover:shadow-md cursor-pointer transition-all hover:-translate-y-1" style={{ borderLeftColor: color }}>
+                    <div className="flex justify-between items-start mb-3">
+                        <span className="text-[10px] font-bold text-white px-2 py-1 rounded-[5px] uppercase tracking-wide" style={{ backgroundColor: color }}>{ag.metric}</span>
+                        {ag.status !== 'Poptávka' && (
+                            <span className={`text-[10px] font-bold px-2 py-1 rounded-[5px] ${isOnTrack ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{isOnTrack ? 'ON TRACK' : 'OFF TRACK'}</span>
+                        )}
+                    </div>
+                    <h4 className="font-bold text-gray-900 text-base mb-2 truncate">{ag.title}</h4>
+                    
+                    <p className="text-[11px] text-gray-500 mb-1 font-medium flex items-center gap-1">
+                        <span className="w-4 h-4 bg-gray-100 rounded-full inline-flex items-center justify-center text-[8px] font-bold">M</span> {ag.manager}
+                    </p>
+                    <p className="text-[11px] text-gray-500 mb-3 font-medium flex items-center gap-1 pl-1">
+                        🗓️ {formatDate(ag.startDate)} – {endDate}
+                    </p>
+                    
+                    <div className="bg-slate-50 p-3 rounded-lg text-xs flex justify-between items-center border border-gray-100">
+                        <div className="text-center"><span className="block text-gray-400 mb-1">Start</span><strong className="text-gray-700 text-sm">{ag.baseline}</strong></div>
+                        <div className="text-gray-300 font-bold">→</div>
+                        <div className="text-center"><span className="block text-gray-400 mb-1">Aktuálně</span><strong className="text-blue-600 text-sm">{ag.current}</strong></div>
+                        <div className="text-gray-300 font-bold">→</div>
+                        <div className="text-center"><span className="block text-gray-400 mb-1">Cíl</span><strong className="text-gray-700 text-sm">{ag.target}</strong></div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- DETAIL ZAKÁZKY MODAL ---
+        const DetailModal = ({ ag, onClose, onStatusChange, onSaveSession }) => {
+            const [view, setView] = useState('list'); 
+            const [editIndex, setEditIndex] = useState(null);
+            const color = getMetricColor(ag.metric);
+            const endDate = calculateEndDate(ag.startDate, ag.horizon);
+
+            useEffect(() => {
+                const handleEsc = (e) => { if (e.key === 'Escape') onClose(); };
+                window.addEventListener('keydown', handleEsc);
+                return () => window.removeEventListener('keydown', handleEsc);
+            }, [onClose]);
+
+            const openAdd = () => setView('add');
+            const openEdit = (index) => { setEditIndex(index); setView('edit'); };
+
+            const handleFormSubmit = (session) => {
+                onSaveSession(ag.id, session, view === 'edit', editIndex);
+                setView('list');
+            };
+
+            return (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm fade-in">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl h-[90vh] flex overflow-hidden flex-col md:flex-row">
+                        
+                        {/* LEVÝ PANEL: Detail & Graf */}
+                        <div className="w-full md:w-1/2 flex flex-col bg-slate-50 border-r border-gray-200 overflow-y-auto">
+                            <div className="p-6 bg-white border-b border-gray-200 sticky top-0 flex justify-between items-start z-10">
+                                <div>
+                                    <div className="flex gap-2 mb-2">
+                                        <span className="text-xs font-bold text-white px-2 py-1 rounded-[5px]" style={{ backgroundColor: color }}>{ag.metric}</span>
+                                        <span className="text-xs font-bold bg-gray-200 text-gray-700 px-2 py-1 rounded-[5px]">{ag.status}</span>
+                                    </div>
+                                    <h2 className="text-2xl font-bold text-gray-900">{ag.title}</h2>
+                                    <p className="text-sm text-gray-500 mt-2 font-medium">
+                                        Manažer: {ag.manager} | Období: {formatDate(ag.startDate)} – {endDate}
+                                    </p>
+                                </div>
+                                <button onClick={onClose} className="p-2 bg-gray-100 hover:bg-gray-200 rounded-full font-bold transition-colors">✕</button>
+                            </div>
+                            
+                            <div className="p-6 flex-1 space-y-6">
+                                <div>
+                                    <h3 className="text-sm font-bold text-gray-700 mb-2">Aktuální stav (Problém):</h3>
+                                    <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm text-sm text-gray-700 whitespace-pre-wrap">{ag.currentState}</div>
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-bold text-gray-700 mb-2">Cílový stav:</h3>
+                                    <div className="bg-white p-4 rounded-lg border border-gray-200 shadow-sm text-sm text-gray-700 whitespace-pre-wrap">{ag.targetState}</div>
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-bold text-gray-700 mb-2 flex justify-between items-center">
+                                        Graf progrese
+                                        <span className="text-xs font-normal text-gray-500 bg-gray-200 px-2 py-0.5 rounded-[5px]">{ag.metricDesc}</span>
+                                    </h3>
+                                    <div className="h-60 bg-white rounded-lg p-4 shadow-sm border border-gray-200">
+                                        <ProgressChart data={ag.sessions} target={ag.target} color={color} startDate={ag.startDate} />
+                                    </div>
+                                </div>
+
+                                {/* Řízení */}
+                                <div className="bg-white p-6 rounded-lg border border-gray-200 shadow-sm">
+                                    <h3 className="font-bold text-gray-800 mb-4">Řízení zakázky</h3>
+                                    
+                                    {ag.status === 'Uzavřená' ? (
+                                        <div className="text-center p-4 bg-green-50 rounded-lg border border-green-200">
+                                            <h4 className="font-bold text-green-800 mb-2">Zakázka byla úspěšně uzavřena</h4>
+                                            <div className="flex justify-center mb-2">
+                                                {[1,2,3,4,5].map(s => <IconStar key={s} filled={ag.rating?.stars >= s} />)}
+                                            </div>
+                                            <p className="text-sm text-green-900 italic">"{ag.rating?.comment}"</p>
+                                        </div>
+                                    ) : (
+                                        <div className="flex flex-wrap gap-3">
+                                            {ag.status === 'Poptávka' && <button onClick={() => onStatusChange(ag.id, 'Připraveno')} className="flex-1 bg-[#2870ED] text-white px-4 py-3 rounded-[5px] font-bold">Připraveno (Ke schválení)</button>}
+                                            {ag.status === 'Připraveno' && <button onClick={() => onStatusChange(ag.id, 'Rozpracované')} className="flex-1 bg-[#0CB43F] text-white px-4 py-3 rounded-[5px] font-bold">Spustit realizaci</button>}
+                                            {ag.status === 'Rozpracované' && <button onClick={() => onStatusChange(ag.id, 'Uzavřená')} className="flex-1 bg-[#303030] text-white px-4 py-3 rounded-[5px] font-bold">Úspěšně splněno (Uzavřít)</button>}
+                                            {ag.status !== 'Poptávka' && <button onClick={() => onStatusChange(ag.id, 'Poptávka')} className="px-4 py-3 bg-gray-100 text-gray-600 font-bold rounded-[5px]">Vrátit zpět</button>}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* PRAVÝ PANEL: Výpis nebo Formulář */}
+                        <div className="w-full md:w-1/2 bg-white flex flex-col relative">
+                            {view === 'list' ? (
+                                <div className="flex flex-col h-full fade-in">
+                                    <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-white z-10">
+                                        <h3 className="font-bold text-gray-800">Historie Interakcí</h3>
+                                        {ag.status === 'Rozpracované' && (
+                                            <button onClick={openAdd} className="bg-[#0CB43F] hover:bg-[#0a9b36] text-white px-4 py-2 rounded-[5px] font-bold text-sm shadow-sm transition-colors">+ Zadat novou</button>
+                                        )}
+                                    </div>
+                                    <div className="flex-1 overflow-y-auto p-6 bg-slate-50 space-y-4">
+                                        {ag.sessions.length === 0 ? <p className="text-sm text-gray-400 italic text-center mt-10">Zatím neproběhla žádná schůzka.</p> : 
+                                        ag.sessions.map((s, i) => (
+                                            <div key={i} className="bg-white rounded-lg border border-gray-200 shadow-sm p-4 hover:shadow-md transition-shadow">
+                                                <div className="flex justify-between items-center mb-3 border-b border-gray-100 pb-2">
+                                                    <div><span className="text-xs font-bold text-gray-400">Interakce #{i+1}</span><p className="text-sm font-bold text-gray-800">{formatDate(s.date)}</p></div>
+                                                    <div className="flex items-center gap-4">
+                                                        <div className="text-right"><span className="text-xs text-gray-400 block">Hodnota</span><strong className="text-[#2870ED] text-lg leading-none">{s.value}</strong></div>
+                                                        <button onClick={() => openEdit(i)} className="text-gray-400 hover:text-[#2870ED] text-sm font-medium underline">Upravit</button>
+                                                    </div>
+                                                </div>
+                                                <div className="space-y-3 text-sm">
+                                                    <div><strong className="text-gray-700 block text-[10px] uppercase tracking-wider mb-1">Co jsme dělali:</strong><p className="text-gray-600">{s.activities}</p></div>
+                                                    <div><strong className="text-gray-700 block text-[10px] uppercase tracking-wider mb-1">Zpětná vazba:</strong><p className="text-gray-600">{s.note}</p></div>
+                                                    <div className="bg-blue-50 p-3 rounded-lg text-[#2870ED]"><strong className="text-[10px] uppercase tracking-wider block mb-1">📌 Follow-up:</strong>{s.followUp}</div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            ) : (
+                                <SessionForm 
+                                    initialData={view === 'edit' ? ag.sessions[editIndex] : null} 
+                                    ag={ag}
+                                    onSubmit={handleFormSubmit} 
+                                    onCancel={() => setView('list')} 
+                                />
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- FORMULÁŘ PRO INTERAKCI ---
+        const SessionForm = ({ initialData, ag, onSubmit, onCancel }) => {
+            const [val, setVal] = useState(initialData?.value || ag.current);
+            const [activities, setActivities] = useState(initialData?.activities || '');
+            const [note, setNote] = useState(initialData?.note || '');
+            const [followUp, setFollowUp] = useState(initialData?.followUp || '');
+            const [date, setDate] = useState(initialData?.date || new Date().toISOString().split('T')[0]);
+
+            const isEdit = !!initialData;
+            const lastFollowUp = !isEdit && ag.sessions.length > 0 ? ag.sessions[ag.sessions.length - 1].followUp : null;
+
+            return (
+                <div className="flex flex-col h-full fade-in absolute inset-0 bg-white z-20">
+                    <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-slate-50">
+                        <h3 className="font-bold text-gray-800">{isEdit ? 'Upravit interakci' : 'Zadat novou interakci'}</h3>
+                        <button onClick={onCancel} className="text-sm font-bold text-gray-500 hover:text-gray-800">Zpět na přehled</button>
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-6 space-y-5">
+                        
+                        {!isEdit && lastFollowUp && lastFollowUp !== '-' && (
+                            <div className="bg-yellow-50 border border-yellow-200 p-4 rounded-lg shadow-sm">
+                                <strong className="text-yellow-800 text-xs uppercase tracking-wide block mb-1">🔍 Kontrola z minula:</strong>
+                                <p className="text-yellow-900 text-sm font-medium">{lastFollowUp}</p>
+                            </div>
+                        )}
+
+                        <div className="flex gap-4">
+                            <div className="flex-1">
+                                <label className="text-sm font-bold text-gray-700 block mb-1">Datum schůzky</label>
+                                <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full border border-gray-300 rounded-[5px] p-2 outline-none focus:border-[#2870ED] text-sm font-semibold" />
+                            </div>
+                            <div className="flex-1">
+                                <label className="text-sm font-bold text-gray-700 block mb-1">Hodnota metriky</label>
+                                <input type="number" value={val} onChange={e => setVal(Number(e.target.value))} className="w-full border border-gray-300 rounded-[5px] p-2 outline-none focus:border-[#2870ED] font-bold text-[#2870ED]" />
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <label className="text-sm font-bold text-gray-700 block mb-1">Co jsme dělali (Aktivity)</label>
+                            <textarea value={activities} onChange={e => setActivities(e.target.value)} placeholder="Stínování, roleplay..." className="w-full border border-gray-300 rounded-[5px] p-3 text-sm h-24 outline-none resize-none focus:border-[#2870ED]" />
+                        </div>
+
+                        <div>
+                            <label className="text-sm font-bold text-gray-700 block mb-1">Komentář / Zpětná vazba</label>
+                            <textarea value={note} onChange={e => setNote(e.target.value)} placeholder="Zjištění, reakce týmu..." className="w-full border border-gray-300 rounded-[5px] p-3 text-sm h-24 outline-none resize-none focus:border-[#2870ED]" />
+                        </div>
+
+                        <div>
+                            <label className="text-sm font-bold text-gray-700 block mb-1 text-[#2870ED]">Další krok (Follow-up na příště)</label>
+                            <input type="text" value={followUp} onChange={e => setFollowUp(e.target.value)} placeholder="Co zkontrolovat?" className="w-full border border-[#2870ED]/40 bg-blue-50/30 rounded-[5px] p-3 text-sm font-medium outline-none focus:border-[#2870ED]" />
+                        </div>
+                    </div>
+                    <div className="p-6 border-t border-gray-100 bg-white">
+                        <button 
+                            onClick={() => onSubmit({ date, value: val, activities, note, followUp })}
+                            disabled={!activities || !note || !followUp} 
+                            className="w-full bg-[#0CB43F] hover:bg-[#0a9b36] disabled:opacity-50 text-white font-bold py-3 rounded-[5px] shadow-sm transition-colors"
+                        >
+                            {isEdit ? 'Uložit změny' : 'Uložit interakci'}
+                        </button>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- RATING MODAL (Simulace Manažera) ---
+        const RatingModal = ({ ag, onSubmit, onCancel }) => {
+            const [stars, setStars] = useState(0);
+            const [comment, setComment] = useState('');
+
+            return (
+                <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm fade-in">
+                    <div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl text-center">
+                        <div className="w-16 h-16 bg-[#02A3A4]/10 text-[#02A3A4] rounded-full flex items-center justify-center mx-auto mb-4">⭐</div>
+                        <h2 className="text-2xl font-bold mb-2">Hodnocení spolupráce</h2>
+                        <p className="text-sm text-gray-500 mb-6">Pohled manažera (Simulace). Ohodnoťte přínos Business Coache pro váš tým.</p>
+                        
+                        <div className="flex justify-center gap-2 mb-6">
+                            {[1,2,3,4,5].map(s => (
+                                <button key={s} onClick={() => setStars(s)} className="focus:outline-none transition-transform hover:scale-110">
+                                    <IconStar filled={stars >= s} />
+                                </button>
+                            ))}
+                        </div>
+
+                        <textarea 
+                            placeholder="Slovní hodnocení (co se povedlo, co zlepšit)..."
+                            value={comment} onChange={e => setComment(e.target.value)}
+                            className="w-full border border-gray-300 rounded-[5px] p-3 min-h-[100px] mb-6 outline-none focus:border-[#02A3A4] text-sm"
+                        />
+
+                        <div className="flex gap-4">
+                            <button onClick={onCancel} className="flex-1 py-3 text-gray-600 font-bold hover:bg-gray-100 rounded-[5px]">Zrušit</button>
+                            <button onClick={() => onSubmit({ stars, comment })} disabled={stars === 0} className="flex-1 py-3 bg-[#303030] text-white font-bold rounded-[5px] hover:bg-black disabled:opacity-50">Potvrdit a uzavřít</button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- WIZARD PRO NOVOU DOHODU ---
+        const Wizard = ({ onClose, onSave }) => {
+            const [step, setStep] = useState(1);
+            const [data, setData] = useState({ title: '', metric: 'Úvěry', metricDesc: '', manager: '', currentState: '', targetState: '', horizon: '6 měsíců', baseline: 0, target: 0 });
+            const [aiLoading, setAiLoading] = useState(null);
+
+            useEffect(() => {
+                const handleEsc = (e) => { if (e.key === 'Escape') onClose(); };
+                window.addEventListener('keydown', handleEsc);
+                return () => window.removeEventListener('keydown', handleEsc);
+            }, [onClose]);
+
+            const simulateAI = (field) => {
+                if(!data[field]) return;
+                setAiLoading(field);
+                setTimeout(() => {
+                    const lines = data[field].split(/[.\n]/).filter(s => s.trim().length > 2);
+                    const formatted = lines.map(s => `• ${s.trim()}`).join('\n');
+                    setData(prev => ({...prev, [field]: formatted}));
+                    setAiLoading(null);
+                }, 1200);
+            };
+
+            return (
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm fade-in">
+                    <div className="bg-white rounded-2xl w-full max-w-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+                        <div className="px-8 py-5 bg-slate-50 border-b border-gray-200 flex justify-between items-center">
+                            <h2 className="text-xl font-bold">Nová zakázka ({step}/3)</h2>
+                            <button onClick={onClose} className="font-bold text-xl text-gray-400 hover:text-gray-800 transition-colors">✕</button>
+                        </div>
+                        
+                        <div className="p-8 flex-1 overflow-y-auto">
+                            {step === 1 && (
+                                <div className="space-y-6 fade-in">
+                                    <div>
+                                        <label className="block font-bold text-sm text-gray-700 mb-2">Název zakázky (krátký a úderný)</label>
+                                        <input type="text" value={data.title} onChange={e => setData({...data, title: e.target.value})} className="w-full border border-gray-300 p-3 rounded-[5px] outline-none focus:border-[#2870ED] text-lg font-semibold" placeholder="Např. Záchrana hypoték" />
+                                    </div>
+                                    <div className="flex gap-6">
+                                        <div className="flex-1">
+                                            <label className="block font-bold text-sm text-gray-700 mb-2">Manažer (TL/AL)</label>
+                                            <input type="text" list="manager-list" value={data.manager} onChange={e => setData({...data, manager: e.target.value})} className="w-full border border-gray-300 p-3 rounded-[5px] outline-none focus:border-[#2870ED]" placeholder="Začněte psát jméno..." />
+                                            <datalist id="manager-list">{Managers.map(m => <option key={m} value={m} />)}</datalist>
+                                        </div>
+                                        <div className="flex-1">
+                                            <label className="block font-bold text-sm text-gray-700 mb-2">Metrika (Téma)</label>
+                                            <select value={data.metric} onChange={e => setData({...data, metric: e.target.value})} className="w-full border border-gray-300 p-3 rounded-[5px] outline-none focus:border-[#2870ED]">
+                                                {AllMetrics.map(m => <option key={m} value={m}>{m}</option>)}
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {step === 2 && (
+                                <div className="space-y-6 fade-in">
+                                    <div className="relative bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                                        <label className="block font-bold text-sm text-gray-700 mb-2">Popis aktuálního stavu (Co teď nefunguje)</label>
+                                        <textarea value={data.currentState} onChange={e => setData({...data, currentState: e.target.value})} className="w-full bg-slate-50 border border-gray-200 p-3 rounded-[5px] h-32 outline-none resize-none focus:border-[#2870ED] text-sm" placeholder="Vypište se z toho, co nyní nefunguje..."></textarea>
+                                        <button onClick={() => simulateAI('currentState')} className={`mt-2 text-xs font-bold text-white px-4 py-2 rounded-[5px] transition-all w-full flex justify-center ${aiLoading==='currentState' ? 'ai-shimmer' : 'bg-[#721C7A] hover:bg-[#5a1660]'}`}>
+                                            {aiLoading === 'currentState' ? 'Strukturuji...' : '✨ AI Strukturovat'}
+                                        </button>
+                                    </div>
+                                    <div className="relative bg-white p-4 rounded-xl border border-gray-200 shadow-sm">
+                                        <label className="block font-bold text-sm text-gray-700 mb-2">Popis cílového stavu (Co od toho chceme)</label>
+                                        <textarea value={data.targetState} onChange={e => setData({...data, targetState: e.target.value})} className="w-full bg-slate-50 border border-gray-200 p-3 rounded-[5px] h-32 outline-none resize-none focus:border-[#2870ED] text-sm" placeholder="Definujte, jak to má vypadat na konci..."></textarea>
+                                        <button onClick={() => simulateAI('targetState')} className={`mt-2 text-xs font-bold text-white px-4 py-2 rounded-[5px] transition-all w-full flex justify-center ${aiLoading==='targetState' ? 'ai-shimmer' : 'bg-[#721C7A] hover:bg-[#5a1660]'}`}>
+                                            {aiLoading === 'targetState' ? 'Strukturuji...' : '✨ AI Strukturovat'}
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {step === 3 && (
+                                <div className="space-y-6 fade-in">
+                                    <div>
+                                        <label className="block font-bold text-sm text-gray-700 mb-2">Přesný ukazatel (Co konkrétně měříme?)</label>
+                                        <input type="text" value={data.metricDesc} onChange={e => setData({...data, metricDesc: e.target.value})} className="w-full border border-gray-300 p-3 rounded-[5px] outline-none focus:border-[#2870ED]" placeholder="Např. Počet nově načerpaných úvěrů, nebo Penetrace %" />
+                                    </div>
+                                    <div className="flex gap-6 p-4 bg-slate-50 border border-gray-200 rounded-xl">
+                                        <div className="flex-1">
+                                            <label className="block font-bold text-sm text-gray-700 mb-2">Start (Baseline)</label>
+                                            <input type="number" value={data.baseline} onChange={e => setData({...data, baseline: Number(e.target.value)})} className="w-full border border-gray-300 p-3 rounded-[5px] outline-none focus:border-[#2870ED]" />
+                                        </div>
+                                        <div className="flex-1">
+                                            <label className="block font-bold text-sm text-gray-700 mb-2">Cíl (Target)</label>
+                                            <input type="number" value={data.target} onChange={e => setData({...data, target: Number(e.target.value)})} className="w-full border border-gray-300 p-3 rounded-[5px] outline-none focus:border-[#2870ED] font-bold text-green-700" />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block font-bold text-sm text-gray-700 mb-2">Časový horizont</label>
+                                        <select value={data.horizon} onChange={e => setData({...data, horizon: e.target.value})} className="w-full border border-gray-300 p-3 rounded-[5px] outline-none focus:border-[#2870ED]">
+                                            <option>3 měsíce</option><option>6 měsíců</option><option>12 měsíců</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="px-8 py-5 bg-slate-50 border-t border-gray-200 flex justify-between">
+                            <button onClick={() => step > 1 ? setStep(step - 1) : onClose()} className="px-6 py-2 text-gray-600 hover:bg-gray-200 font-bold rounded-[5px] transition-colors">{step === 1 ? 'Zrušit' : 'Zpět'}</button>
+                            <button onClick={() => step < 3 ? setStep(step + 1) : onSave(data)} disabled={step===1 && (!data.title || !data.manager)} className="px-8 py-2 bg-[#2870ED] hover:bg-[#1C5BCA] disabled:opacity-50 text-white font-bold rounded-[5px] transition-colors shadow-sm">
+                                {step === 3 ? 'Založit zakázku' : 'Pokračovat'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
